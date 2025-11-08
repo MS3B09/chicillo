@@ -1,0 +1,5 @@
+# System packages required for Streamlit Cloud
+# These are installed via apt-get
+
+# For sentence-transformers and embeddings
+libgomp1
