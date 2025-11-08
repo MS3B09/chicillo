@@ -48,3 +48,7 @@ htmlcov/
 
 # Logs
 *.log
+
+# Vector database (too large for GitHub)
+chroma1.0/
+*.zip
