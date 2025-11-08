@@ -5,15 +5,10 @@ import io
 from PIL import Image
 import os
 import zipfile
-import requests
 import gdown
 from pathlib import Path
-from langchain_community.document_loaders import DirectoryLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
 from langchain_community.vectorstores import Chroma
 from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
 from langchain.prompts import PromptTemplate
 from langchain.chains import ConversationalRetrievalChain
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -27,21 +22,18 @@ load_dotenv()
 CHROMA_PATH = "chroma1.0"
 MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
 
-# Get API key from Streamlit secrets (for cloud deployment) or environment variables (for local)
+# Get credentials from Streamlit secrets or environment variables
 try:
     GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", os.getenv("GOOGLE_API_KEY"))
-    # Get Google Drive file ID from secrets
     GDRIVE_FILE_ID = st.secrets.get("GDRIVE_FILE_ID", os.getenv("GDRIVE_FILE_ID"))
 except Exception:
-    # Fallback for local development without secrets
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
     GDRIVE_FILE_ID = os.getenv("GDRIVE_FILE_ID")
 
-# Validate API key exists
+# Validate API key
 if not GOOGLE_API_KEY:
-    st.error("⚠️ Google API Key not found! Please configure it in Streamlit secrets or .env file.")
-    st.info("For Streamlit Cloud: Add GOOGLE_API_KEY to your app secrets in the dashboard.")
-    st.info("For local development: Create a .env file with GOOGLE_API_KEY=your_key")
+    st.error("⚠️ Google API Key not found!")
+    st.info("Add GOOGLE_API_KEY to Streamlit secrets or .env file")
     st.stop()
 
 #----------------------- VECTOR DB DOWNLOAD ----------------------
@@ -49,16 +41,11 @@ def download_from_google_drive(file_id, dest_path):
     """Download file from Google Drive using gdown"""
     try:
         url = f"https://drive.google.com/uc?id={file_id}"
-        st.info("📥 Downloading vector database from Google Drive... This may take 2-3 minutes.")
-        
-        # Download with progress bar
-        output = dest_path
-        gdown.download(url, output, quiet=False, fuzzy=True)
-        
+        st.info("📥 Downloading vector database from Google Drive... (2-3 minutes)")
+        gdown.download(url, dest_path, quiet=False, fuzzy=True)
         return True
-        
     except Exception as e:
-        st.error(f"❌ Error downloading from Google Drive: {str(e)}")
+        st.error(f"❌ Download error: {str(e)}")
         return False
 
 def extract_vector_db(zip_path):
@@ -67,14 +54,11 @@ def extract_vector_db(zip_path):
         st.info("📦 Extracting vector database...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall('.')
-        
-        # Clean up zip file
         os.remove(zip_path)
-        st.success("✅ Vector database extracted successfully!")
+        st.success("✅ Vector database ready!")
         return True
-        
     except Exception as e:
-        st.error(f"❌ Error extracting database: {str(e)}")
+        st.error(f"❌ Extraction error: {str(e)}")
         if os.path.exists(zip_path):
             os.remove(zip_path)
         return False
@@ -83,52 +67,30 @@ def setup_vector_db():
     """Setup vector database - download from Google Drive if needed"""
     if not os.path.exists(CHROMA_PATH):
         if GDRIVE_FILE_ID:
-            st.warning("🔄 Vector database not found locally. Downloading from Google Drive...")
-            
+            st.warning("🔄 Downloading vector database from Google Drive...")
             zip_path = "chroma1.0.zip"
             
-            # Download from Google Drive
             if download_from_google_drive(GDRIVE_FILE_ID, zip_path):
-                # Extract the database
                 if extract_vector_db(zip_path):
-                    st.success("✅ Vector database is ready!")
+                    st.success("✅ Database ready!")
                     time.sleep(2)
                     st.rerun()
                 else:
-                    st.error("Failed to extract vector database.")
+                    st.error("Failed to extract database")
                     st.stop()
             else:
-                st.error("Failed to download vector database from Google Drive.")
+                st.error("Failed to download database")
                 st.stop()
         else:
             st.error(f"""
             ⚠️ Vector database not found!
             
             **Setup Instructions:**
-            
-            1. **Compress your vector database:**
-               ```bash
-               zip -r chroma1.0.zip chroma1.0/
-               ```
-            
-            2. **Upload to Google Drive:**
-               - Go to Google Drive
-               - Upload `chroma1.0.zip`
-               - Right-click → Share → Change to "Anyone with the link"
-               - Copy the FILE_ID from the link
-            
-            3. **Add to Streamlit secrets:**
-               ```toml
-               GDRIVE_FILE_ID = "your_file_id_here"
-               ```
-            
-            **For local development:**
-            - Make sure the `{CHROMA_PATH}` directory exists in your project root
-            - Or add `GDRIVE_FILE_ID` to your .env file
+            1. Compress: `zip -r chroma1.0.zip chroma1.0/`
+            2. Upload to Google Drive and share with "Anyone with the link"
+            3. Get FILE_ID from link: `drive.google.com/file/d/FILE_ID/view`
+            4. Add to Streamlit secrets: `GDRIVE_FILE_ID = "your_file_id"`
             """)
-            
-            st.info("💡 **Tip:** The FILE_ID is the part between /d/ and /view in your Google Drive link")
-            st.code("https://drive.google.com/file/d/FILE_ID_HERE/view", language="text")
             st.stop()
 
 # Setup vector database
@@ -142,29 +104,26 @@ genai.configure(api_key=GOOGLE_API_KEY)
 # Initialize embedding model
 @st.cache_resource
 def load_embeddings():
-    """Load embeddings model with caching"""
     return HuggingFaceEmbeddings(model_name=MODEL_NAME)
 
 try:
     embeddings = load_embeddings()
 except Exception as e:
-    st.error(f"Error loading embeddings model: {str(e)}")
+    st.error(f"Error loading embeddings: {str(e)}")
     st.stop()
 
-# Vector DB setup
+# Load vector database
 @st.cache_resource
 def load_vector_db():
-    """Load vector database with caching"""
     return Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
 
 try:
     vectordb = load_vector_db()
 except Exception as e:
-    st.error(f"Error loading Chroma database: {str(e)}")
-    st.info("The vector database might be corrupted. Try deleting the chroma1.0 folder and restarting.")
+    st.error(f"Error loading vector database: {str(e)}")
     st.stop()
 
-# Define the template for the conversational agent
+# Conversational prompt template
 template = """
 Your name is Chic-illo. You are a knowledgeable AI-assistant specializing in recycling and DIY (Do It Yourself) projects.
 Use the context below to answer the user's question accurately and concisely.
@@ -187,12 +146,11 @@ Response:
 """
 prompt_template = PromptTemplate(template=template, input_variables=["context", "chat_history", "question"])
 
-# Initialize the generative model with stable Gemini 2.5 Flash
+# Initialize language model with Gemini 2.5 Flash (current stable model)
 @st.cache_resource
 def load_llm():
-    """Load language model with caching"""
     return ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model="gemini-2.5-flash",  # Current stable model as of Nov 2025
         google_api_key=GOOGLE_API_KEY, 
         temperature=0.7
     )
@@ -203,10 +161,9 @@ except Exception as e:
     st.error(f"Error initializing language model: {str(e)}")
     st.stop()
 
-# Conversational chain setup
+# Setup conversational chain
 @st.cache_resource
 def load_chain():
-    """Load conversational chain with caching"""
     return ConversationalRetrievalChain.from_llm(
         llm, 
         vectordb.as_retriever(), 
@@ -222,25 +179,14 @@ except Exception as e:
 
 #---------------------- STREAMLIT INTERFACE ---------------------
 
-# Initialize session states for chat history and page tracking
+# Initialize session states
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 if "current_page" not in st.session_state:
     st.session_state.current_page = "Text Chat"
 
-# Function to simulate typing effect for chat responses
-def simulate_typing_effect(response):
-    """Display response with a typing effect"""
-    typed_response = ""
-    text_placeholder = st.empty()
-
-    for char in response:
-        typed_response += char
-        text_placeholder.markdown(f"**Chicillo:** {typed_response}")
-        time.sleep(0.02)
-
-# Function to get chatbot responses based on chat history
+# Get chatbot response
 def get_chatbot_response(user_input):
     """Get response from the chatbot using RAG"""
     try:
@@ -252,7 +198,7 @@ def get_chatbot_response(user_input):
     except Exception as e:
         return f"Sorry, I encountered an error: {str(e)}. Please try again."
 
-# Page for text chat interaction
+# Text chat page
 def text_chat_page():
     st.title("💬 Text Chat with Chicillo")
     st.write("Ask me anything about recycling and DIY projects!")
@@ -264,7 +210,7 @@ def text_chat_page():
         elif message["role"] == "bot":
             st.markdown(f"**Chicillo:** {message['content']}")
 
-    # Create a form for user input
+    # User input form
     with st.form(key="chat_form", clear_on_submit=True):
         user_input = st.text_input("You:", "", key="user_input_field")
         submit_button = st.form_submit_button("Send")
@@ -287,7 +233,7 @@ def text_chat_page():
         st.session_state.chat_history = []
         st.rerun()
 
-# Page for image-based chat
+# Image chat page
 def image_chat_page():
     st.title("🖼️ Image Chat with Chicillo")
     st.write("Upload an image to get recycling ideas and suggestions!")
@@ -316,17 +262,18 @@ def image_chat_page():
         except Exception as e:
             st.error(f"Error processing image: {str(e)}")
 
-# Function to process image content
+# Process image with Gemini vision
 def get_gemini_vision_response(image, question):
     """Process image with Gemini's vision capabilities"""
     try:
+        # Use Gemini 2.5 Flash for vision (current stable model)
         model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content([question, image])
         return response.text
     except Exception as e:
         return f"Error analyzing image: {str(e)}"
 
-# Page for app introduction
+# About page
 def chicillo_page():
     st.title("♻️ Chicillo - Your Eco-Friendly Assistant 🌍")
     
@@ -351,7 +298,7 @@ def chicillo_page():
     
     ### 🤖 Powered By:
     
-    - **Gemini 2.5 Flash**: Google's advanced multimodal AI model
+    - **Gemini 2.5 Flash**: Google's latest stable multimodal AI model
     - **RAG Technology**: Retrieval-Augmented Generation for accurate, contextual responses
     - **Vector Database**: Fast and efficient information retrieval
     
