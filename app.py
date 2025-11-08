@@ -22,7 +22,7 @@ load_dotenv()
 #----------------------- CONFIGURATION ----------------------
 CHROMA_PATH = "chroma1.0"
 MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
-GOOGLE_API_KEY = "AIzaSyCzYRjWD4SROmhO9EUTqeGH_s11XTHupIw"
+GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY")
 
 # Initialize embedding model
 embeddings = HuggingFaceEmbeddings(model_name=MODEL_NAME)
@@ -157,10 +157,11 @@ def main():
     if page == "Text Chat":
         text_chat_page()
     elif page == "Image Chat":
-        image_chat_page(model=genai.GenerativeModel('gemini-1.5-pro-latest'))
+        image_chat_page(model=genai.GenerativeModel('gemini-1.5-pro'))
     elif page == "Chic-illo":
         chicillo_page()
 
 # Run the main app
 if __name__ == "__main__":
     main()
+
