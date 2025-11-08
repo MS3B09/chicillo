@@ -9,3 +9,5 @@ python-dotenv>=1.0.0
 Pillow>=10.0.0
 faiss-cpu>=1.7.4
 tenacity>=8.2.0
+gdown>=4.7.1
+requests>=2.31.0
